@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "schemarize"
+version = "0.1.0"
+description = "A toolkit to infer data schemas from samples"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+	{ name = "Jason Frazier", email = "jasonxfrazier@gmail.com" },
+]
+dependencies = []
