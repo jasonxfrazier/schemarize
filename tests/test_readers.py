@@ -1,28 +1,29 @@
-# tests/test_readers.py
+# tests/test_csv_reader.py
 import io
 import gzip
 import bz2
-import json
 import pytest
 from pathlib import Path
-from typing import Any
-from json import JSONDecodeError
+from typing import Any, Dict
 
-from schemarize.readers import read_jsonl, read_json_array
+from schemarize.readers import read_csv
 
-
-def create_jsonl_file(
+def create_csv_file(
     tmp_path: Path,
-    lines: list[dict[str, Any]],
+    rows: list[Dict[str, Any]],
+    headers: list[str],
     suffix: str = ""
 ) -> Path:
     """
-    Create a JSONL test file, optionally compressed, and return its Path.
+    Create a CSV test file, optionally compressed, and return its Path.
     """
-    filename: str = "sample.jsonl" + suffix
-    path: Path = tmp_path / filename
-    content: str = "\n".join(json.dumps(line) for line in lines) + "\n"
-    
+    filename = "sample.csv" + suffix
+    path = tmp_path / filename
+    # build CSV content
+    content = ",".join(headers) + "\n"
+    for row in rows:
+        content += ",".join(str(row.get(h, "")) for h in headers) + "\n"
+
     if suffix == ".gz":
         with gzip.open(path, "wt", encoding="utf-8") as f:
             f.write(content)
@@ -31,100 +32,41 @@ def create_jsonl_file(
             f.write(content.encode("utf-8"))
     else:
         path.write_text(content, encoding="utf-8")
-    
+
     return path
 
 
-def create_json_array_file(
-    tmp_path: Path,
-    arr: list[dict[str, Any]],
-    suffix: str = ""
-) -> Path:
-    """
-    Create a JSON array file, optionally compressed, and return its Path.
-    """
-    filename: str = "sample.json" + suffix
-    path: Path = tmp_path / filename
-    content: str = json.dumps(arr)
-    
-    if suffix == ".gz":
-        with gzip.open(path, "wt", encoding="utf-8") as f:
-            f.write(content)
-    elif suffix == ".bz2":
-        with bz2.open(path, "wb") as f:
-            f.write(content.encode("utf-8"))
-    else:
-        path.write_text(content, encoding="utf-8")
-    
-    return path
+def test_read_csv_plain(tmp_path: Path) -> None:
+    headers = ["a", "b"]
+    rows = [{"a": "1", "b": "2"}, {"a": "3", "b": "4"}]
+    path = create_csv_file(tmp_path, rows, headers)
+    assert list(read_csv(str(path))) == rows
 
 
-def test_read_jsonl_plain(tmp_path: Path) -> None:
-    lines: list[dict[str, Any]] = [{"a": 1}, {"b": 2}, {}]
-    path: Path = create_jsonl_file(tmp_path, lines)
-    assert list(read_jsonl(str(path))) == lines
+def test_read_csv_gzip(tmp_path: Path) -> None:
+    headers = ["x", "y"]
+    rows = [{"x": "5", "y": "6"}]
+    path = create_csv_file(tmp_path, rows, headers, suffix=".gz")
+    assert list(read_csv(str(path))) == rows
 
 
-def test_read_jsonl_gzip(tmp_path: Path) -> None:
-    lines: list[dict[str, Any]] = [{"x": "x"}, {"y": "y"}]
-    path: Path = create_jsonl_file(tmp_path, lines, suffix=".gz")
-    assert list(read_jsonl(str(path))) == lines
+def test_read_csv_bz2(tmp_path: Path) -> None:
+    headers = ["m", "n"]
+    rows = [{"m": "true", "n": "false"}]
+    path = create_csv_file(tmp_path, rows, headers, suffix=".bz2")
+    assert list(read_csv(str(path))) == rows
 
 
-def test_read_jsonl_bz2(tmp_path: Path) -> None:
-    lines: list[dict[str, Any]] = [{"foo": "bar"}]
-    path: Path = create_jsonl_file(tmp_path, lines, suffix=".bz2")
-    assert list(read_jsonl(str(path))) == lines
+def test_read_csv_file_like() -> None:
+    headers = ["p", "q"]
+    rows = [{"p": "alpha", "q": "beta"}]
+    content = "p,q\nalpha,beta\n"
+    fake = io.StringIO(content)
+    assert list(read_csv(fake)) == rows
 
 
-def test_read_jsonl_file_like() -> None:
-    lines: list[dict[str, Any]] = [{"k": "v"}]
-    content: str = "\n".join(json.dumps(line) for line in lines) + "\n"
-    fake: io.StringIO = io.StringIO(content)
-    assert list(read_jsonl(fake)) == lines
-
-
-def test_read_jsonl_empty(tmp_path: Path) -> None:
-    path: Path = tmp_path / "empty.jsonl"
-    path.write_text("", encoding="utf-8")
-    assert list(read_jsonl(str(path))) == []
-
-
-def test_read_jsonl_invalid_json(tmp_path: Path) -> None:
-    path: Path = tmp_path / "invalid.jsonl"
-    path.write_text("not a json line\n", encoding="utf-8")
-    with pytest.raises(JSONDecodeError):
-        list(read_jsonl(str(path)))
-
-
-def test_read_json_array_plain(tmp_path: Path) -> None:
-    arr: list[dict[str, Any]] = [{"p": 1}, {"q": 2}]
-    path: Path = create_json_array_file(tmp_path, arr)
-    assert list(read_json_array(str(path))) == arr
-
-
-def test_read_json_array_gzip(tmp_path: Path) -> None:
-    arr: list[dict[str, Any]] = [{"m": "n"}, {"o": "p"}]
-    path: Path = create_json_array_file(tmp_path, arr, suffix=".gz")
-    assert list(read_json_array(str(path))) == arr
-
-
-def test_read_json_array_bz2(tmp_path: Path) -> None:
-    arr: list[dict[str, Any]] = [{"x": True}, {"y": False}]
-    path: Path = create_json_array_file(tmp_path, arr, suffix=".bz2")
-    assert list(read_json_array(str(path))) == arr
-
-
-def test_read_json_array_file_like() -> None:
-    arr: list[dict[str, Any]] = [{"foo": 123}, {"bar": 456}]
-    content: str = json.dumps(arr)
-    fake: io.StringIO = io.StringIO(content)
-    assert list(read_json_array(fake)) == arr
-
-
-def test_read_json_array_invalid_json(tmp_path: Path) -> None:
-    # malformed JSON array should raise JSONDecodeError
-    path: Path = tmp_path / "invalid_array.json"
-    path.write_text("[not valid json]", encoding="utf-8")
-    with pytest.raises(JSONDecodeError):
-        list(read_json_array(str(path)))
+def test_read_csv_chunk_size(tmp_path: Path) -> None:
+    headers = ["k", "v"]
+    rows = [{"k": "A", "v": "B"}, {"k": "C", "v": "D"}]
+    path = create_csv_file(tmp_path, rows, headers)
+    assert list(read_csv(str(path), chunk_size=1)) == rows
