@@ -203,7 +203,7 @@ def read_dataframe(source: Union[pd.DataFrame, pa.Table]) -> Iterator[Dict[str, 
         raise RuntimeError(f"Error reading DataFrame: {err}") from err
 
 
-def infer_schema(
+def read_data(
     source: Union[str, TextIO, pd.DataFrame, pa.Table],
     *,
     sample_size: Optional[int] = None,

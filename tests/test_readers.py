@@ -11,8 +11,8 @@ import pyarrow as pa
 import pytest
 
 from schemarize.readers import (
-    infer_schema,
     read_csv,
+    read_data,
     read_dataframe,
     read_json_array,
     read_jsonl,
@@ -171,13 +171,13 @@ def test_read_dataframe_invalid():
 def test_infer_schema_jsonl(tmp_path: Path):
     lines = [{"a": 1}, {"b": 2}, {}]
     path = create_jsonl_file(tmp_path, lines)
-    assert infer_schema(str(path)) == lines
+    assert read_data(str(path)) == lines
 
 
-def test_infer_schema_sample_size(tmp_path: Path):
+def test_read_data_sample_size(tmp_path: Path):
     lines = [{"x": 10}, {"x": 20}, {"x": 30}]
     path = create_jsonl_file(tmp_path, lines)
-    assert infer_schema(str(path), sample_size=2) == lines[:2]
+    assert read_data(str(path), sample_size=2) == lines[:2]
 
 
 def test_infer_schema_dataframe():
