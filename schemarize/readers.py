@@ -17,6 +17,7 @@ def read_jsonl(source: Union[str, TextIO]) -> Iterator[Dict[str, Any]]:
     Supports plain text, .gz, and .bz2 files. Raises JSONDecodeError on invalid JSON.
     """
     if isinstance(source, str):
+        file: Any
         if source.endswith(".gz"):
             file = gzip.open(source, "rt", encoding="utf-8")
         elif source.endswith(".bz2"):
@@ -62,6 +63,7 @@ def read_json_array(source: Union[str, TextIO]) -> Iterator[Dict[str, Any]]:
     Supports plain JSON, .gz, and .bz2 files via streaming parsing. Raises JSONDecodeError on errors.
     """
     if isinstance(source, str):
+        file: Any
         if source.endswith(".gz"):
             file = gzip.open(source, "rb")
         elif source.endswith(".bz2"):
@@ -101,6 +103,7 @@ def read_csv(
     else uses pandas.read_csv with chunksize.
     """
     if isinstance(source, str):
+        file: Any
         if source.endswith(".gz"):
             file = gzip.open(source, "rt", encoding=encoding)
         elif source.endswith(".bz2"):

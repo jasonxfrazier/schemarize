@@ -1,13 +1,19 @@
 repos:
   - repo: https://github.com/psf/black
-    rev: 24.4.2  # Use latest stable version
+    rev: 25.1.0  # Use latest stable version
     hooks:
       - id: black
   - repo: https://github.com/PyCQA/isort
-    rev: 5.13.2  # Use latest stable version
+    rev: 6.0.1  # Use latest stable version
     hooks:
       - id: isort
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.4.8
+    rev: v0.11.12
     hooks:
       - id: ruff
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0  # Use the latest stable version
+    hooks:
+      - id: mypy
+        args: [--config-file=pyproject.toml]
+    

@@ -10,8 +10,8 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 
-from schemarize.readers import infer_schema  # <-- Don't forget this import
 from schemarize.readers import (
+    infer_schema,
     read_csv,
     read_dataframe,
     read_json_array,
