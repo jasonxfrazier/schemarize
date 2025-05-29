@@ -2,6 +2,7 @@
 
 **Schemarize** is a Python package to infer, inspect, and serialize the schema of data files and objects—whether they’re JSON, CSV, Parquet, or DataFrames. It’s designed for simplicity: just call one method, get a schema, and export as JSON, YAML, or CSV.
 
+[GITHUB](https://github.com/jasonxfrazier/schemarize)
 ---
 
 ## Installation
@@ -89,7 +90,7 @@ schema.save("my_schema.csv")
 
 ## License
 
-[MIT](LICENSE.txt)
+[MIT](https://github.com/jasonxfrazier/schemarize/blob/main/LICENSE)
 
 ---
 
