@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Set, Union
 
 
 def get_value_type(value: Any) -> str:
@@ -62,7 +62,7 @@ def infer_dict_schema(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         raise RuntimeError(f"Error inferring schema for dicts: {err}") from err
 
 
-def infer_list_schema(list_of_values: List[Any]) -> Any:
+def infer_list_schema(list_of_values: List[Any]) -> Dict[str, Any]:
     try:
         if not isinstance(list_of_values, list):
             raise TypeError("infer_list_schema expects a list")
@@ -77,7 +77,9 @@ def infer_list_schema(list_of_values: List[Any]) -> Any:
         raise RuntimeError(f"Error inferring schema for lists: {err}") from err
 
 
-def infer_schema(data: Any) -> Any:
+def infer_schema(
+    data: Union[Dict[str, Any], List[Any], str, int, float, bool, None],
+) -> Union[Dict[str, Any], List[Any], str, int, float, bool, None]:
     """
     Entry point. Accepts:
     - list of dicts (standard record case)
