@@ -161,9 +161,12 @@ def read_parquet(
         should_close = False
     else:
         raw = source.read() if hasattr(source, "read") else b""
-        buffer_data = (
-            raw if isinstance(raw, (bytes, bytearray)) else raw.encode("utf-8")
-        )
+        if isinstance(raw, bytes):
+            buffer_data = raw
+        elif isinstance(raw, str):
+            buffer_data = raw.encode("utf-8")
+        else:
+            buffer_data = str(raw).encode("utf-8")
         file_obj = BytesIO(buffer_data)
         try:
             pq_file = pq.ParquetFile(file_obj)
