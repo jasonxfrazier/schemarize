@@ -1,11 +1,12 @@
-# schemarize/readers.py
 import json
 import gzip
 import bz2
 import ijson
-from typing import Union, Iterator, Dict, Any, TextIO
+from typing import Union, Iterator, Dict, Any, TextIO, Optional
 from io import BytesIO, TextIOBase
+import csv
 import pandas as pd
+import pyarrow.parquet as pq
 
 
 def read_jsonl(source: Union[str, TextIO]) -> Iterator[Dict[str, Any]]:
@@ -23,8 +24,8 @@ def read_jsonl(source: Union[str, TextIO]) -> Iterator[Dict[str, Any]]:
         should_close = True
     else:
         if isinstance(source, TextIOBase):
-            content = source.read()
-            file = BytesIO(content.encode('utf-8'))
+            raw = source.read()
+            file = BytesIO(raw.encode("utf-8"))
             should_close = True
         else:
             file = source  # type: ignore
@@ -32,13 +33,11 @@ def read_jsonl(source: Union[str, TextIO]) -> Iterator[Dict[str, Any]]:
 
     try:
         for idx, raw_line in enumerate(file, start=1):
-            # Normalize binary data to str
             line_data = raw_line
             if isinstance(line_data, memoryview):
                 line_data = line_data.tobytes()
             if isinstance(line_data, (bytes, bytearray)):
-                line_data = line_data.decode('utf-8')
-            # Skip non-string lines
+                line_data = line_data.decode("utf-8")
             if not isinstance(line_data, str):
                 continue
             text = line_data.strip()
@@ -60,8 +59,7 @@ def read_jsonl(source: Union[str, TextIO]) -> Iterator[Dict[str, Any]]:
 def read_json_array(source: Union[str, TextIO]) -> Iterator[Dict[str, Any]]:
     """
     Read a JSON array from a file or file-like object and yield each element as a dict.
-    Supports plain JSON, .gz, and .bz2 files via streaming parsing to avoid full memory load.
-    Raises JSONDecodeError on invalid JSON.
+    Supports plain JSON, .gz, and .bz2 files via streaming. Raises JSONDecodeError on errors.
     """
     if isinstance(source, str):
         if source.endswith(".gz"):
@@ -73,61 +71,107 @@ def read_json_array(source: Union[str, TextIO]) -> Iterator[Dict[str, Any]]:
         should_close = True
     else:
         if isinstance(source, TextIOBase):
-            content = source.read()
-            file = BytesIO(content.encode('utf-8'))
+            raw = source.read()
+            file = BytesIO(raw.encode("utf-8"))
             should_close = True
         else:
             file = source  # type: ignore
             should_close = False
 
     try:
-        for item in ijson.items(file, 'item'):
+        for item in ijson.items(file, "item"):
             yield item
     except Exception as err:
         raise json.JSONDecodeError(
             f"Error parsing JSON array: {err}",
-            '',
+            "",
             0
         )
     finally:
         if should_close:
             file.close()
 
-def read_csv(source: Union[str, TextIO], delimiter: str = ',', encoding: str = 'utf-8', chunk_size: int | None = None) -> Iterator[Dict[str, Any]]:
+
+def read_csv(
+    source: Union[str, TextIO],
+    delimiter: str = ",",
+    encoding: str = "utf-8",
+    chunk_size: Optional[int] = None
+) -> Iterator[Dict[str, Any]]:
     '''
     Read a CSV file and yield each row as a dict.
     Supports plain text, .gz, .bz2 files, and file-like objects.
-    If chunk_size is None, uses csv module for streaming.
-    If chunk_size is provided, uses pandas.read_csv with chunksize.
+    If chunk_size is None, streams via csv.DictReader;
+    else uses pandas.read_csv with chunksize.
     '''
-    import csv
-
-    # handle file opening for paths or use provided file-like
     if isinstance(source, str):
         if source.endswith('.gz'):
-            f = gzip.open(source, 'rt', encoding=encoding)
+            file = gzip.open(source, 'rt', encoding=encoding)
         elif source.endswith('.bz2'):
-            f = bz2.open(source, 'rt', encoding=encoding)
+            file = bz2.open(source, 'rt', encoding=encoding)
         else:
-            f = open(source, 'rt', encoding=encoding)
-        own_file = True
+            file = open(source, 'rt', encoding=encoding)
+        should_close = True
     else:
-        f = source
-        own_file = False
+        file = source
+        should_close = False
 
     try:
         if chunk_size is None:
-            reader = csv.DictReader(f, delimiter=delimiter)
+            reader = csv.DictReader(file, delimiter=delimiter)
             for row in reader:
+                if any(v is None for v in row.values()):
+                    raise RuntimeError(f"Malformed CSV row at line {reader.line_num}: missing fields")
                 yield row
         else:
-            df_iter = pd.read_csv(source if isinstance(source, str) else f,
-                                  delimiter=delimiter,
-                                  encoding=encoding,
-                                  chunksize=chunk_size)
+            df_iter = pd.read_csv(
+                source if isinstance(source, str) else file,
+                delimiter=delimiter,
+                encoding=encoding,
+                chunksize=chunk_size
+            )
             for df_chunk in df_iter:
                 for record in df_chunk.to_dict(orient='records'):
                     yield record
+    except Exception as err:
+        raise RuntimeError(f"Error reading CSV: {err}") from err
     finally:
-        if own_file:
-            f.close()
+        if should_close:
+            file.close()
+
+
+def read_parquet(
+    source: Union[str, TextIO],
+    batch_size: Optional[int] = None
+) -> Iterator[Dict[str, Any]]:
+    '''
+    Read a Parquet file and yield each row as a dict.
+    Uses PyArrow for streaming row batches.
+    '''
+    if isinstance(source, str):
+        try:
+            dataset = pq.ParquetFile(source)
+        except Exception as err:
+            raise RuntimeError(f"Error reading Parquet: {err}") from err
+        iterator = dataset.iter_batches(batch_size=batch_size) if batch_size is not None else dataset.iter_batches()
+        should_close_buffer = False
+    else:
+        raw_data = source.read() if hasattr(source, 'read') else b''
+        buffer_data = raw_data if isinstance(raw_data, (bytes, bytearray)) else raw_data.encode('utf-8')
+        file_obj = BytesIO(buffer_data)
+        try:
+            dataset = pq.ParquetFile(file_obj)
+        except Exception as err:
+            raise RuntimeError(f"Error reading Parquet: {err}") from err
+        iterator = dataset.iter_batches(batch_size=batch_size) if batch_size is not None else dataset.iter_batches()
+        should_close_buffer = True
+
+    try:
+        for batch in iterator:
+            for rec in batch.to_pylist():
+                yield rec
+    except Exception as err:
+        raise RuntimeError(f"Error reading Parquet: {err}") from err
+    finally:
+        if should_close_buffer:
+            file_obj.close()

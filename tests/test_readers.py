@@ -1,29 +1,29 @@
-# tests/test_csv_reader.py
+# tests/test_readers.py
 import io
 import gzip
 import bz2
+import json
 import pytest
 from pathlib import Path
 from typing import Any, Dict
+from json import JSONDecodeError
 
-from schemarize.readers import read_csv
+from schemarize.readers import (
+    read_jsonl,
+    read_json_array,
+    read_csv,
+    read_parquet
+)
 
-def create_csv_file(
+
+def create_jsonl_file(
     tmp_path: Path,
-    rows: list[Dict[str, Any]],
-    headers: list[str],
+    lines: list[Dict[str, Any]],
     suffix: str = ""
 ) -> Path:
-    """
-    Create a CSV test file, optionally compressed, and return its Path.
-    """
-    filename = "sample.csv" + suffix
+    filename = "sample.jsonl" + suffix
     path = tmp_path / filename
-    # build CSV content
-    content = ",".join(headers) + "\n"
-    for row in rows:
-        content += ",".join(str(row.get(h, "")) for h in headers) + "\n"
-
+    content = "\n".join(json.dumps(line) for line in lines) + "\n"
     if suffix == ".gz":
         with gzip.open(path, "wt", encoding="utf-8") as f:
             f.write(content)
@@ -32,41 +32,123 @@ def create_csv_file(
             f.write(content.encode("utf-8"))
     else:
         path.write_text(content, encoding="utf-8")
-
     return path
 
 
+def create_json_array_file(
+    tmp_path: Path,
+    arr: list[Dict[str, Any]],
+    suffix: str = ""
+) -> Path:
+    filename = "sample.json" + suffix
+    path = tmp_path / filename
+    content = json.dumps(arr)
+    if suffix == ".gz":
+        with gzip.open(path, "wt", encoding="utf-8") as f:
+            f.write(content)
+    elif suffix == ".bz2":
+        with bz2.open(path, "wb") as f:
+            f.write(content.encode("utf-8"))
+    else:
+        path.write_text(content, encoding="utf-8")
+    return path
+
+
+def create_csv_file(
+    tmp_path: Path,
+    rows: list[Dict[str, Any]],
+    headers: list[str],
+    suffix: str = ""
+) -> Path:
+    filename = "sample.csv" + suffix
+    path = tmp_path / filename
+    content = ",".join(headers) + "\n"
+    for row in rows:
+        content += ",".join(str(row.get(h, "")) for h in headers) + "\n"
+    if suffix == ".gz":
+        with gzip.open(path, "wt", encoding="utf-8") as f:
+            f.write(content)
+    elif suffix == ".bz2":
+        with bz2.open(path, "wb") as f:
+            f.write(content.encode("utf-8"))
+    else:
+        path.write_text(content, encoding="utf-8")
+    return path
+
+
+def test_read_jsonl_valid(tmp_path: Path) -> None:
+    lines = [{"a": 1}, {"b": 2}, {}]
+    path = create_jsonl_file(tmp_path, lines)
+    assert list(read_jsonl(str(path))) == lines
+
+
+def test_read_jsonl_invalid(tmp_path: Path) -> None:
+    path = tmp_path / "invalid.jsonl"
+    path.write_text("not a json line\n", encoding="utf-8")
+    with pytest.raises(JSONDecodeError):
+        list(read_jsonl(str(path)))
+
+
+def test_read_json_array_valid(tmp_path: Path) -> None:
+    arr = [{"p": 1}, {"q": 2}]
+    path = create_json_array_file(tmp_path, arr)
+    assert list(read_json_array(str(path))) == arr
+
+
+def test_read_json_array_invalid(tmp_path: Path) -> None:
+    path = tmp_path / "invalid.json"
+    path.write_text("[not valid json]", encoding="utf-8")
+    with pytest.raises(JSONDecodeError):
+        list(read_json_array(str(path)))
+
+
 def test_read_csv_plain(tmp_path: Path) -> None:
-    headers = ["a", "b"]
     rows = [{"a": "1", "b": "2"}, {"a": "3", "b": "4"}]
+    headers = ["a", "b"]
     path = create_csv_file(tmp_path, rows, headers)
     assert list(read_csv(str(path))) == rows
 
 
-def test_read_csv_gzip(tmp_path: Path) -> None:
-    headers = ["x", "y"]
-    rows = [{"x": "5", "y": "6"}]
-    path = create_csv_file(tmp_path, rows, headers, suffix=".gz")
-    assert list(read_csv(str(path))) == rows
-
-
-def test_read_csv_bz2(tmp_path: Path) -> None:
-    headers = ["m", "n"]
-    rows = [{"m": "true", "n": "false"}]
-    path = create_csv_file(tmp_path, rows, headers, suffix=".bz2")
-    assert list(read_csv(str(path))) == rows
-
-
-def test_read_csv_file_like() -> None:
-    headers = ["p", "q"]
+def test_read_csv_file_like(tmp_path: Path) -> None:
     rows = [{"p": "alpha", "q": "beta"}]
     content = "p,q\nalpha,beta\n"
     fake = io.StringIO(content)
     assert list(read_csv(fake)) == rows
 
 
-def test_read_csv_chunk_size(tmp_path: Path) -> None:
-    headers = ["k", "v"]
-    rows = [{"k": "A", "v": "B"}, {"k": "C", "v": "D"}]
-    path = create_csv_file(tmp_path, rows, headers)
-    assert list(read_csv(str(path), chunk_size=1)) == rows
+def test_read_csv_invalid(tmp_path: Path) -> None:
+    path = tmp_path / "invalid.csv"
+    content = "col1,col2\nvalue1,value2\nbadrowwithoutcomma"
+    path.write_text(content, encoding="utf-8")
+    with pytest.raises(RuntimeError):
+        list(read_csv(str(path)))
+
+
+def test_read_parquet_valid(tmp_path: Path) -> None:
+    import pandas as pd
+    df = pd.DataFrame([
+        {"x": 10, "y": "foo"},
+        {"x": 20, "y": "bar"}
+    ])
+    path = tmp_path / "sample.parquet"
+    df.to_parquet(path)
+    expected = df.to_dict(orient="records")
+    assert list(read_parquet(str(path))) == expected
+
+
+def test_read_parquet_with_batch_size(tmp_path: Path) -> None:
+    import pandas as pd
+    df = pd.DataFrame([
+        {"a": 10}, {"a": 20}, {"a": 30}
+    ])
+    path = tmp_path / "batch.parquet"
+    df.to_parquet(path)
+    result = list(read_parquet(str(path), batch_size=2))
+    assert result == df.to_dict(orient="records")
+
+
+def test_read_parquet_invalid(tmp_path: Path) -> None:
+    path = tmp_path / "invalid.parquet"
+    path.write_text("not a parquet file", encoding="utf-8")
+    with pytest.raises(RuntimeError):
+        list(read_parquet(str(path)))
