@@ -21,3 +21,6 @@ dependencies = [
     "ruff",
 	"mypy"
 ]
+
+[tool.isort]
+profile = "black"
