@@ -11,4 +11,19 @@ license = { text = "MIT" }
 authors = [
 	{ name = "Jason Frazier", email = "jasonxfrazier@gmail.com" },
 ]
-dependencies = []
+dependencies = [
+    "ijson",
+    "pandas",
+    "pyarrow",
+	"pytest",
+    "black",
+    "isort",
+    "ruff",
+	"mypy"
+]
+
+[tool.isort]
+profile = "black"
+
+[tool.mypy]
+ignore_missing_imports = true
