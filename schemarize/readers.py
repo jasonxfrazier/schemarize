@@ -181,12 +181,59 @@ def read_dataframe(source: Union[pd.DataFrame, pa.Table]) -> Iterator[Dict[str, 
     try:
         if isinstance(source, pd.DataFrame):
             for rec in source.to_dict(orient='records'):
-                yield rec # type: ignore
+                yield rec  # type: ignore
         elif isinstance(source, pa.Table):
             for batch in source.to_batches():
                 for rec in batch.to_pylist():
-                    yield rec
+                    yield rec  # type: ignore
         else:
             raise RuntimeError(f"Unsupported type: {type(source)}")
     except Exception as err:
         raise RuntimeError(f"Error reading DataFrame: {err}") from err
+
+def infer_schema(
+    source: Union[str, TextIO, pd.DataFrame, pa.Table],
+    *,
+    sample_size: Optional[int] = None
+) -> list[Dict[str, Any]]:
+    """
+    Entry point: Read records from various sources into a list of dicts.
+
+    Parameters:
+        source: path, file-like, DataFrame, or Table
+        sample_size: max records to sample (None for all records)
+
+    Returns:
+        List of records as dicts, with all NaN values replaced by None.
+    """
+    # Select reader based on type or extension
+    if isinstance(source, (pd.DataFrame, pa.Table)):
+        records = read_dataframe(source)
+    else:
+        if isinstance(source, str) and source.endswith('.jsonl'):
+            records = read_jsonl(source)
+        elif isinstance(source, str) and source.endswith('.json'):
+            records = read_json_array(source)
+        elif isinstance(source, str) and source.endswith('.csv'):
+            records = read_csv(source)
+        elif isinstance(source, str) and source.endswith('.parquet'):
+            records = read_parquet(source)
+        else:
+            raise RuntimeError(f"Unsupported source type or extension: {source}")
+
+    # Apply sampling
+    if sample_size is not None and sample_size >= 0:
+        result = []
+        for idx, rec in enumerate(records):
+            if idx >= sample_size:
+                break
+            result.append(rec)
+    else:
+        result = list(records)
+
+    # Normalize NaN to None for all results
+    def _replace_nan_with_none(record: Dict[str, Any]) -> Dict[str, Any]:
+        return {k: (None if isinstance(v, float) and pd.isna(v) else v) for k, v in record.items()}
+
+    return [_replace_nan_with_none(rec) for rec in result]
+
