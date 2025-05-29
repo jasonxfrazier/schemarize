@@ -3,7 +3,7 @@ import csv
 import gzip
 import json
 from io import BytesIO, TextIOBase
-from typing import Any, Dict, Iterator, Optional, TextIO, Union
+from typing import Any, Dict, Iterator, List, Optional, TextIO, Union
 
 import ijson
 import pandas as pd
@@ -98,6 +98,7 @@ def read_csv(
 ) -> Iterator[Dict[str, Any]]:
     """
     Read a CSV file and yield each row as a dict.
+    Always converts all values to str.
     Supports plain text, .gz, .bz2 files, and file-like objects.
     If chunk_size is None, streams via csv.DictReader;
     else uses pandas.read_csv with chunksize.
@@ -121,17 +122,18 @@ def read_csv(
             for row in reader:
                 if any(v is None for v in row.values()):
                     raise RuntimeError(f"Malformed CSV row at line {reader.line_num}")
-                yield row
+                yield {k: v for k, v in row.items()}
         else:
             df_iter = pd.read_csv(
                 source if isinstance(source, str) else file,
                 delimiter=delimiter,
                 encoding=encoding,
                 chunksize=chunk_size,
+                dtype=str,
             )
             for df_chunk in df_iter:
                 for record in df_chunk.to_dict(orient="records"):
-                    yield record
+                    yield {k: v for k, v in record.items()}
     except Exception as err:
         raise RuntimeError(f"Error reading CSV: {err}") from err
     finally:
@@ -244,10 +246,19 @@ def read_data(
         result = list(records)
 
     # Normalize NaN to None for all results
-    def _replace_nan_with_none(record: Dict[str, Any]) -> Dict[str, Any]:
-        return {
-            k: (None if isinstance(v, float) and pd.isna(v) else v)
-            for k, v in record.items()
-        }
+    def _replace_nan_with_none(
+        obj: Union[Dict[str, Any], List[Any], float, int, str, None],
+    ) -> Any:
+        """
+        Recursively replace all float NaN values with None in lists and dicts.
+        """
+        if isinstance(obj, float) and pd.isna(obj):
+            return None
+        elif isinstance(obj, dict):
+            return {k: _replace_nan_with_none(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [_replace_nan_with_none(item) for item in obj]
+        else:
+            return obj
 
     return [_replace_nan_with_none(rec) for rec in result]

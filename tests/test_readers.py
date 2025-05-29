@@ -2,6 +2,7 @@ import bz2
 import gzip
 import io
 import json
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -17,9 +18,19 @@ from schemarize.readers import (
     read_parquet,
 )
 
+
+def normalize_nans(obj):
+    """Recursively convert all float('nan') values to None in dicts/lists."""
+    if isinstance(obj, float) and math.isnan(obj):
+        return None
+    if isinstance(obj, dict):
+        return {k: normalize_nans(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [normalize_nans(x) for x in obj]
+    return obj
+
+
 # --- JSONL TESTS ---
-
-
 def create_jsonl_file(tmp_path: Path, lines: list[dict], suffix: str = "") -> Path:
     filename = "test.jsonl" + suffix
     path = tmp_path / filename
@@ -217,13 +228,17 @@ def test_read_parquet_invalid(tmp_path: Path):
 
 def test_read_dataframe_pandas():
     df = pd.DataFrame([{"x": 1}, {"y": 2}])
-    assert list(read_dataframe(df)) == df.to_dict(orient="records")
+    result = list(read_dataframe(df))
+    expected = df.to_dict(orient="records")
+    assert normalize_nans(result) == normalize_nans(expected)
 
 
 def test_read_dataframe_pyarrow():
     df = pd.DataFrame([{"x": 3}, {"y": 4}])
     table = pa.Table.from_pandas(df)
-    assert list(read_dataframe(table)) == df.to_dict(orient="records")
+    result = list(read_dataframe(table))
+    expected = df.to_dict(orient="records")
+    assert normalize_nans(result) == normalize_nans(expected)
 
 
 def test_read_dataframe_invalid():
