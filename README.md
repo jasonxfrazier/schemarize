@@ -42,11 +42,10 @@ print(schema.to_dict())
 
 ## Main Function
 
-### `schemarize(data, *, output="json", sample_size=None) -> Schema`
+### `schemarize(source, sample_size=None) -> Schema`
 
-- **data:** File path, DataFrame, Arrow Table, or file-like object.
-- **output:** `"json"`, `"yaml"`, or `"csv"` (for future use; `.to_*()` preferred).
-- **sample_size:** Optionally limit number of records to inspect.
+- **source:** File path, DataFrame, Arrow Table, or file-like object.
+- **sample_size:** optional max records to smple.
 
 Returns a `Schema` object.
 
